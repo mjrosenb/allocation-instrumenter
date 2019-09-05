@@ -4,7 +4,8 @@ import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.net.JarURLConnection;
 import java.util.jar.JarFile;
-import javax.annotation.Generated;
+// NOTE(mrosenbe): new name for this class. I don't care about older java versions.
+import javax.annotation.processing.Generated;
 
 /**
  * Add the agent to the bootclasspath before invoking premain().

@@ -29,25 +29,6 @@ import java.util.concurrent.ConcurrentMap;
  * AllocationInstrumenter}.
  */
 public class AllocationRecorder {
-  static {
-    // Sun's JVMs in 1.5.0_06 and 1.6.0{,_01} have a bug where calling
-    // Instrumentation.getObjectSize() during JVM shutdown triggers a
-    // JVM-crashing assert in JPLISAgent.c, so we make sure to not call it after
-    // shutdown.  There can still be a race here, depending on the extent of the
-    // JVM bug, but this seems to be good enough.
-    // instrumentation is volatile to make sure the threads reading it (in
-    // recordAllocation()) see the updated value; we could do more
-    // synchronization but it's not clear that it'd be worth it, given the
-    // ambiguity of the bug we're working around in the first place.
-    Runtime.getRuntime()
-        .addShutdownHook(
-            new Thread() {
-              @Override
-              public void run() {
-                setInstrumentation(null);
-              }
-            });
-  }
 
   // See the comment above the addShutdownHook in the static block above
   // for why this is volatile.
@@ -56,11 +37,26 @@ public class AllocationRecorder {
   static Instrumentation getInstrumentation() {
     return instrumentation;
   }
-
+  
   static void setInstrumentation(Instrumentation inst) {
     instrumentation = inst;
   }
-
+  static {
+      System.out.println("initializing recordingAllocation...");
+  }
+  // Used for reentrancy checks
+  // NOTE(mrosenbe): this used to be final, but it looked like there was some awful
+  // condition where the allocation would get instrumented, and recordSample would get called
+  // on *this* allocation, before recordingAllocation got set, and I think java removed
+  // my null checks because how could a private static final value be null?
+  // this all may have been related to me specifying the agent twice.  I didn't check
+  // to see if this issue went away after I started specifying the agent once.
+  private static ThreadLocal<Boolean> recordingAllocation = new ThreadLocal<Boolean>();
+  // NOTE(mrosenbe): more of my debugging cruft 
+  private static ThreadLocal<Long> allocationCount = new ThreadLocal<Long>();
+  static {
+      System.out.println("done, recordingAllocation" + recordingAllocation.toString());
+  }    
   // Mostly because, yes, arrays are faster than collections.
   private static volatile Sampler[] additionalSamplers;
 
@@ -68,9 +64,6 @@ public class AllocationRecorder {
   // the field is volatile, so anyone who reads additionalSamplers
   // will get a consistent view of it.
   private static final Object samplerLock = new Object();
-
-  // Used for reentrancy checks
-  private static final ThreadLocal<Boolean> recordingAllocation = new ThreadLocal<Boolean>();
 
   // Stores the object sizes for the last ~100000 encountered classes
   private static final ForwardingMap<Class<?>, Long> classSizesMap =
@@ -127,20 +120,31 @@ public class AllocationRecorder {
    * @param sampler The sampler to add.
    */
   public static void addSampler(Sampler sampler) {
+      // NOTE(mrosenbe): I added this in as a bit of a debug step.  If you don't use this code, then
+      // you'll need to remove the call to addSampler(null)
+      if (sampler == null) {
+          System.out.println("add with null, treating as a debug...");
+          System.out.println(String.format("%s", recordingAllocation.get()));
+          return;
+      }
+    System.out.println(String.format("calling addSampler with: %s", sampler));
     synchronized (samplerLock) {
       Sampler[] samplers = additionalSamplers;
       /* create a new list of samplers from the old, adding this sampler */
       if (samplers != null) {
+          System.out.println("samplers was not null, reallocing");
         Sampler[] newSamplers = new Sampler[samplers.length + 1];
         System.arraycopy(samplers, 0, newSamplers, 0, samplers.length);
         newSamplers[samplers.length] = sampler;
         additionalSamplers = newSamplers;
       } else {
+        System.out.println("samplers was null. allocating fresh");          
         Sampler[] newSamplers = new Sampler[1];
         newSamplers[0] = sampler;
         additionalSamplers = newSamplers;
       }
     }
+    System.out.println("done calling addSampler");
   }
 
   /**
@@ -208,16 +212,30 @@ public class AllocationRecorder {
    * @param newObj the new <code>Object</code> whose allocation is being recorded.
    */
   public static void recordAllocation(int count, String desc, Object newObj) {
-    if (Objects.equals(recordingAllocation.get(), Boolean.TRUE)) {
+    if (recordingAllocation == null || Objects.equals(recordingAllocation.get(), Boolean.TRUE)) {
       return;
     }
 
     recordingAllocation.set(Boolean.TRUE);
-
     if (count >= 0) {
       desc = desc.replace('.', '/');
     }
-
+    // NOTE(mrosenbe): it is safe to add printing logic here because of the reentrancy checks above.
+    // if don't try to  add any logic outside of the reentrancy check, this will get caught in an infinite loop.
+    if (allocationCount != null) {
+        if (allocationCount.get() == null) {
+            allocationCount.set(0L);
+        }
+        long locCount = allocationCount.get() + 1;
+        allocationCount.set(locCount);
+        if ((locCount & 0xfff) == 0) {
+            if (additionalSamplers != null) {
+                System.out.println(String.format("A: (%s, %s)", instrumentation, additionalSamplers.length));
+            } else {
+                System.out.println(String.format("A: (%s, NULL)", instrumentation));
+            }
+        }
+    }
     // Copy value into local variable to prevent NPE that occurs when
     // instrumentation field is set to null by this class's shutdown hook
     // after another thread passed the null check but has yet to call
@@ -234,6 +252,7 @@ public class AllocationRecorder {
         if (objectSize < 0) {
           objectSize = getObjectSize(newObj, (count >= 0), instr);
         }
+        System.out.println(String.format("recording allocation.  There are %d samplers", samplers.length));
         for (Sampler sampler : samplers) {
           sampler.sampleAllocation(count, desc, newObj, objectSize);
         }

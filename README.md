@@ -10,7 +10,7 @@ The [latest release][] is available from [Maven Central][] as:
 <dependency>
   <groupId>com.google.code.java-allocation-instrumenter</groupId>
   <artifactId>java-allocation-instrumenter</artifactId>
-  <version>3.1.0</version>
+  <version>3.2.0</version>
 </dependency>
 ```
 
@@ -53,3 +53,13 @@ For more information on how to get or use the allocation instrumenter, see [Gett
 [latest release]: https://github.com/google/allocation-instrumenter/releases/tag/java-allocation-instrumenter-3.1.0
 [Maven Central]: http://search.maven.org/#artifactdetails%7Ccom.google.code.java-allocation-instrumenter%7Cjava-allocation-instrumenter%7C3.1.0%7Cjar
 [Getting Started]: https://github.com/google/allocation-instrumenter/wiki
+
+
+# To build and use locally:
+
+```bash
+mvn versions:set versions:commit -DnewVersion=3.3.4
+mvn install
+```
+
+then use `~/.m2/repository/com/google/code/java-allocation-instrumenter/java-allocation-instrumenter/3.3.4/java-allocation-instrumenter-3.3.4.jar`
