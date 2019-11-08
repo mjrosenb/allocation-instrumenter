@@ -130,6 +130,8 @@ public class AllocationRecorder {
     System.out.println(String.format("calling addSampler with: %s", sampler));
     synchronized (samplerLock) {
       Sampler[] samplers = additionalSamplers;
+      System.out.println(String.format("Write: samplers.id=%d", System.identityHashCode(additionalSamplers)));
+      System.out.println(String.format("Write: class.id=%d", System.identityHashCode(AllocationRecorder.class)));       
       /* create a new list of samplers from the old, adding this sampler */
       if (samplers != null) {
           System.out.println("samplers was not null, reallocing");
@@ -144,6 +146,7 @@ public class AllocationRecorder {
         additionalSamplers = newSamplers;
       }
     }
+    System.out.println(String.format("Write: samplers.id=%d", System.identityHashCode(additionalSamplers)));    
     System.out.println("done calling addSampler");
   }
 
@@ -198,8 +201,8 @@ public class AllocationRecorder {
 
   public static void recordAllocation(Class<?> cls, Object newObj) {
     // The use of replace makes calls to this method relatively ridiculously
-    // expensive.
-    String typename = cls.getName().replace('.', '/');
+    // expensive. (so I removed it?)
+      String typename = cls.getName();// .replace('.', '/');
     recordAllocation(-1, typename, newObj);
   }
 
@@ -217,11 +220,14 @@ public class AllocationRecorder {
     }
 
     recordingAllocation.set(Boolean.TRUE);
+    /*
     if (count >= 0) {
       desc = desc.replace('.', '/');
     }
+    */
     // NOTE(mrosenbe): it is safe to add printing logic here because of the reentrancy checks above.
     // if don't try to  add any logic outside of the reentrancy check, this will get caught in an infinite loop.
+    /*
     if (allocationCount != null) {
         if (allocationCount.get() == null) {
             allocationCount.set(0L);
@@ -234,8 +240,12 @@ public class AllocationRecorder {
             } else {
                 System.out.println(String.format("A: (%s, NULL)", instrumentation));
             }
+            System.out.println(String.format("Use: samplers.id=%d", System.identityHashCode(additionalSamplers)));
+            System.out.println(String.format("Use: class.id=%d", System.identityHashCode(AllocationRecorder.class))); 
         }
+        
     }
+    */
     // Copy value into local variable to prevent NPE that occurs when
     // instrumentation field is set to null by this class's shutdown hook
     // after another thread passed the null check but has yet to call
@@ -252,7 +262,7 @@ public class AllocationRecorder {
         if (objectSize < 0) {
           objectSize = getObjectSize(newObj, (count >= 0), instr);
         }
-        System.out.println(String.format("recording allocation.  There are %d samplers", samplers.length));
+        //System.out.println(String.format("recording allocation.  There are %d samplers", samplers.length));
         for (Sampler sampler : samplers) {
           sampler.sampleAllocation(count, desc, newObj, objectSize);
         }
